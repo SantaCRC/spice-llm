@@ -1,0 +1,49 @@
+* RC Low-Pass Filter with Detailed Analysis
+* Components: R = 1kÎ©, C = 100nF
+* Cutoff frequency: fc = 1/(2*Ï*R*C) â 1.59 kHz
+
+.title RC Low-Pass Filter Simulation
+
+* Circuit definition
+Vin in 0 DC 0 AC 1             ; Input voltage source
+R1 in out 1k                   ; 1kÎ© resistor
+C1 out 0 100n                  ; 100nF capacitor
+
+* Analysis section
+.control
+* Set up the simulation environment
+setplot new                    ; Create new plot
+set xbrushwidth=2              ; Set line width
+
+* AC Analysis - Frequency Response
+ac dec 20 1 1Meg               ; AC sweep: 20 points/decade, 1Hz to 1MHz
+plot vdb(out) xlog             ; Bode plot (dB vs log frequency)
+plot vp(out) xlog              ; Phase plot
+
+* Transient Analysis - Time Domain Response
+tran 1u 10m                    ; 1Î¼s step, 10ms duration
+plot v(in) v(out)              ; Input and output waveforms
+
+* Step Response Analysis
+Vin in 0 PWL(0 0 1u 1)         ; Step input: 0 to 1V step
+tran 1u 5m                     ; Transient analysis for step response
+plot v(in) v(out)              ; Plot step response
+
+* Calculate and display results
+let gain = v(out)/v(in)        ; Calculate voltage gain
+let phase = vp(out)-vp(in)     ; Calculate phase shift
+
+* Measure important parameters
+meas ac f3db WHEN vdb(out)=vdb(out)[0]-3 ; -3dB frequency
+meas tran risetime TRIG v(out) VAL=0.1 RISE=1 TARG v(out) VAL=0.9 RISE=1 ; Rise time
+
+echo "RC Low-Pass Filter Results:"
+echo "Cutoff frequency (-3dB): " $&f3db " Hz"
+echo "Rise time: " $&risetime " seconds"
+.endc
+
+* Model definitions (if needed)
+.model R RES R=1
+.model C CAP C=1
+
+.end

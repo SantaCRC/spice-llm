@@ -1,0 +1,30 @@
+* Simple RC Low-Pass Filter Netlist
+* Cutoff frequency: ~1.59 kHz (fc = 1/(2*pi*R*C))
+
+* Circuit components
+V1 in 0 DC 0 AC 1 SIN(0 1 1k) ; Input source (DC=0, AC=1, sine wave 1Vpp, 1kHz)
+R1 in out 1k                   ; 1kÎ© resistor
+C1 out 0 100n                  ; 100nF capacitor
+
+* Analysis commands
+.control
+* AC analysis (frequency response)
+ac dec 10 10 100k              ; AC sweep: 10 points per decade from 10Hz to 100kHz
+plot vdb(out)                  ; Plot output voltage in dB
+plot v(out)                    ; Plot output voltage magnitude
+
+* Transient analysis (time domain)
+tran 10u 5m                    ; Transient analysis: 10Î¼s step, 5ms duration
+plot v(in) v(out)              ; Plot input and output voltages
+
+* Operating point analysis
+op                              ; DC operating point
+print all                      ; Print all node voltages
+
+* Measure cutoff frequency (-3dB point)
+meas ac f3db WHEN vdb(out)=vdb(out)[0]-3 ; Find -3dB frequency
+print f3db                     ; Print cutoff frequency
+.endc
+
+* End of netlist
+.end

@@ -1,0 +1,31 @@
+* Simple RC Low-Pass Filter Netlist
+* Cutoff frequency: ~159 Hz (R=1k, C=1uF)
+
+.title RC Low-Pass Filter Simulation
+
+* Components
+R1 in out 1k      ; Resistor 1kÎ©
+C1 out 0 1uF      ; Capacitor 1Î¼F
+
+* Input voltage source (AC analysis)
+Vin in 0 AC 1V    ; 1V AC input for frequency response
+
+* Analysis commands
+.control
+* AC analysis: frequency sweep from 10Hz to 10kHz
+ac dec 100 10 10k
+
+* Plot frequency response
+plot vdb(out)     ; Plot magnitude in dB
+plot vp(out)      ; Plot phase
+
+* Transient analysis: step response
+tran 10u 10m     ; 10Î¼s step, 10ms simulation time
+
+* Step input for transient analysis
+let vin_step = unitstep(time)  ; Create step function
+plot v(out) vin_step          ; Plot step response
+.endc
+
+* End of netlist
+.end

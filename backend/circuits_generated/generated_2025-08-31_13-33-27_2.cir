@@ -1,0 +1,8 @@
+Rectificador de media onda
+V1 in 0 SIN(0 10 50)
+D1 in out D1N4007
+R1 out 0 1k
+.model D1N4007 D(Is=14.11e-9 Rs=0.0105 N=1.849 Cjo=51.17e-12 M=0.3333 Vj=0.7)
+.tran 0 100m 0 10u
+.plot tran v(in) v(out)
+.end

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>SPICE LLM — Chat + Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <!-- Chart.js para gráficos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  
+  <style>
+    :root{
+      --bg:#1e1e1e; --bg2:#252526; --panel:#2d2d2d; --accent:#0e639c; --fg:#ddd; --muted:#aaa; --border:#3c3c3c;
+      --sidebar-width: 48px;
+    }
+    *{ box-sizing:border-box }
+    html, body { height:100%; }
+    body {
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      color:var(--fg); background:var(--bg);
+      display:grid; grid-template-columns:var(--sidebar-width) 1fr;
+    }
+    
+    /* Sidebar (VSCode style) */
+    .sidebar {
+      background:var(--bg2); border-right:1px solid var(--border);
+      display:flex; flex-direction:column; align-items:center; padding:8px 0;
+    }
+    .sidebar-icon {
+      width:32px; height:32px; margin:4px 0; display:flex; align-items:center; justify-content:center;
+      cursor:pointer; border-radius:4px; color:var(--muted); font-size:16px;
+      transition: all 0.2s ease;
+    }
+    .sidebar-icon:hover {
+      background:var(--panel); color:var(--fg);
+    }
+    .sidebar-icon.active {
+      background:var(--accent); color:white;
+    }
+    
+    /* Content area */
+    .content { 
+      position:relative; 
+      display:grid; 
+      grid-template-rows:auto 1fr; 
+      height: 100vh;
+    }
+    
+    /* File tabs (solo para el panel de editor) */
+    .file-tabs {
+      align-items:center; gap:2px; padding:0 8px;
+      background:var(--bg2); border-bottom:1px solid var(--border); height:38px; overflow-x:auto;
+      display: flex; /* Siempre visible cuando el panel editor esté activo */
+    }
+    .file-tab {
+      display:flex; align-items:center; gap:8px; padding:8px 12px; white-space:nowrap;
+      background:transparent; border:1px solid transparent; border-bottom:none; color:var(--muted);
+      cursor:pointer; user-select:none; border-top-left-radius:4px; border-top-right-radius:4px;
+      height:32px; min-width:120px;
+    }
+    .file-tab.active {
+      background:var(--panel); color:var(--fg); border-color:var(--border); border-bottom-color: var(--panel);
+    }
+    .file-tab .close {
+      margin-left:auto; padding:2px; border-radius:2px; opacity:0.7;
+    }
+    .file-tab .close:hover {
+      background:rgba(255,255,255,0.1); opacity:1;
+    }
+    .file-tab {
+      display:flex; align-items:center; gap:8px; padding:8px 12px; white-space:nowrap;
+      background:transparent; border:1px solid transparent; border-bottom:none; color:var(--muted);
+      cursor:pointer; user-select:none; border-top-left-radius:4px; border-top-right-radius:4px;
+      height:100%; min-width:120px;
+    }
+    .file-tab.active {
+      background:var(--panel); color:var(--fg); border-color:var(--border); border-bottom-color: var(--panel);
+    }
+    .file-tab .close {
+      margin-left:auto; padding:2px; border-radius:2px; opacity:0.7;
+    }
+    .file-tab .close:hover {
+      background:rgba(255,255,255,0.1); opacity:1;
+    }
+    
+    .panel { 
+      position:absolute; 
+      inset:0; 
+      display:none; 
+    }
+    .panel.active { 
+      display:flex; 
+      flex-direction: column;
+    }
+    
+    /* Chat panel layout */
+    #panel-chat {
+      background:var(--bg);
+    }
+    #panel-chat.active {
+      display: grid;
+      grid-template-rows: 1fr auto;
+    }
+    #chat {
+      padding:12px; overflow:auto; background:#1b1b1b; border-bottom:1px solid var(--border);
+    }
+    #actions {
+      display:flex; gap:8px; align-items:center; padding:8px;
+      background:var(--bg2); border-top:1px solid var(--border);
+    }
+    button, select {
+      background:#3a3a3a; color:var(--fg); border:1px solid var(--border);
+      padding:8px 12px; border-radius:4px; cursor:pointer;
+    }
+    button:hover { background:#444; }
+    
+    /* Editor panel */
+    #panel-editor { 
+      background:var(--bg);
+    }
+    #panel-editor.active {
+      display: flex;
+      flex-direction: column;
+    }
+    #panel-editor.active .file-tabs {
+      display: flex !important;
+      flex-shrink: 0;
+    }
+    #editor { 
+      flex: 1;
+      width:100%; 
+      height:100%; 
+      min-height: 0;
+    }
+    
+    /* Console panel */
+    .editor-console {
+      height: 200px;
+      background: #1a1a1a;
+      border-top: 1px solid var(--border);
+      display: none;
+      flex-direction: column;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .editor-console.show {
+      display: flex;
+    }
+    .console-header {
+      background: var(--bg2);
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .console-content {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+      color: #ddd;
+      white-space: pre-wrap;
+    }
+    .console-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .console-btn:hover {
+      background: var(--panel);
+      color: var(--fg);
+    }
+    
+    /* Markdown styles */
+    #chat h1, #chat h2, #chat h3, #chat h4, #chat h5, #chat h6 {
+      color: var(--fg); margin: 1em 0 0.5em 0;
+    }
+    #chat code {
+      background: var(--bg2); color: var(--accent); padding: 2px 4px; border-radius: 3px;
+      font-family: 'Courier New', monospace;
+    }
+    #chat pre {
+      background: var(--bg2); color: var(--fg); padding: 12px; border-radius: 6px;
+      overflow-x: auto; border: 1px solid var(--border);
+    }
+    #chat pre code {
+      background: none; color: inherit; padding: 0;
+    }
+    #chat blockquote {
+      border-left: 4px solid var(--accent); margin: 16px 0; padding-left: 16px;
+      color: var(--muted); font-style: italic;
+    }
+    #chat ul, #chat ol {
+      padding-left: 20px;
+    }
+    #chat li {
+      margin: 4px 0;
+    }
+    
+    /* Enlaces para netlists */
+    .netlist-link {
+      display: inline-block;
+      margin: 8px 0;
+      padding: 6px 12px;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .netlist-link:hover {
+      background: #1177bb;
+    }
+    
+    /* Contenedor de archivos generados */
+    .generated-files {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f0f8ff;
+      border-left: 4px solid var(--accent);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-icon active" data-target="panel-chat" title="Chat">
+      💬
+    </div>
+    <div class="sidebar-icon" data-target="panel-editor" title="Editor SPICE">
+      📄
+    </div>
+    <div class="sidebar-icon" data-target="panel-config" title="Configuración">
+      ⚙️
+    </div>
+    <div class="sidebar-icon" data-target="panel-plots" title="Gráficos">
+      📊
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Panels -->
+    <!-- Panel Chat -->
+    <section id="panel-chat" class="panel active" role="tabpanel">
+      <div id="chat"></div>
+      <div id="actions">
+        <input id="question" type="text" placeholder="Escribe tu pregunta..." style="flex:1; padding:8px; border-radius:4px; border:1px solid #333; background:#2d2d2d; color:#ddd;">
+        <button id="send">Enviar</button>
+        <select id="model" aria-label="Modelo">
+          <option value="deepseek/deepseek-chat-v3.1:free">deepseek/deepseek-chat-v3.1</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Panel Editor -->
+    <section id="panel-editor" class="panel" role="tabpanel">
+      <!-- File tabs (dentro del panel editor) -->
+      <div class="file-tabs" id="file-tabs">
+        <button id="open-more-files" style="margin-left: auto; padding: 4px 8px; font-size: 12px; background: var(--accent); border: none; color: white; border-radius: 3px; cursor: pointer;">
+          + Más archivos
+        </button>
+      </div>
+      
+      <!-- Editor actions -->
+      <div class="editor-actions" style="padding: 8px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center;">
+        <button id="run" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+          ▶️ Simular en ngspice
+        </button>
+        <span style="color: var(--fg); font-size: 12px; opacity: 0.7;" id="file-info">
+          Sin archivo activo
+        </span>
+      </div>
+      
+      <div id="editor"></div>
+      <!-- Console -->
+      <div class="editor-console" id="editor-console">
+        <div class="console-header">
+          <span style="color: var(--fg); font-weight: bold;">🔧 Consola ngspice</span>
+          <button class="console-btn" id="clear-console">Limpiar</button>
+          <button class="console-btn" id="toggle-console">Ocultar</button>
+        </div>
+        <div class="console-content" id="console-content"></div>
+      </div>
+    </section>
+
+    <!-- Panel Configuración -->
+    <section id="panel-config" class="panel" role="tabpanel">
+      <div style="padding: 20px; overflow: auto;">
+        <h2 style="margin-top: 0; color: var(--fg);">⚙️ Configuración</h2>
+        
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: var(--fg); margin-bottom: 10px;">Modelo LLM</h3>
+          <select id="config-model" style="width: 100%; padding: 8px; background: var(--bg2); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;">
+            <option value="deepseek/deepseek-chat-v3.1:free">DeepSeek Chat v3.1 (Free)</option>
+            <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
+            <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: var(--fg); margin-bottom: 10px;">Simulación SPICE</h3>
+          <label style="display: block; margin-bottom: 8px; color: var(--fg);">
+            <input type="checkbox" id="auto-simulate" style="margin-right: 8px;"> 
+            Auto-simular al generar circuitos
+          </label>
+          <label style="display: block; margin-bottom: 8px; color: var(--fg);">
+            <input type="checkbox" id="show-plots" checked style="margin-right: 8px;"> 
+            Mostrar gráficos de resultados
+          </label>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: var(--fg); margin-bottom: 10px;">Editor</h3>
+          <label style="display: block; margin-bottom: 8px; color: var(--fg);">
+            Tema:
+            <select id="editor-theme" style="margin-left: 8px; padding: 4px; background: var(--bg2); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;">
+              <option value="vs-dark">VS Dark</option>
+              <option value="vs">VS Light</option>
+              <option value="hc-black">High Contrast</option>
+            </select>
+          </label>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: var(--fg); margin-bottom: 10px;">Información</h3>
+          <p style="color: var(--muted); font-size: 14px;">
+            SPICE LLM v1.0<br>
+            Editor integrado con Monaco<br>
+            Simulación con ngspice<br>
+          </p>
+        </div>
+
+        <button id="save-config" style="background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; width: 100%;">
+          Guardar Configuración
+        </button>
+      </div>
+    </section>
+
+    <!-- Panel Gráficos -->
+    <section id="panel-plots" class="panel" role="tabpanel">
+      <div style="padding: 20px; overflow: auto; height: 100%;">
+        <h2 style="margin-top: 0; color: var(--fg);">📊 Gráficos de Simulación</h2>
+        
+        <div id="plots-content">
+          <div id="no-plots-message" style="text-align: center; color: var(--muted); margin-top: 100px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+            <h3 style="color: var(--fg); margin-bottom: 10px;">No hay gráficos disponibles</h3>
+            <p>Ejecuta una simulación en el editor para generar gráficos.</p>
+            <p style="font-size: 14px;">Los resultados de análisis AC y transitorio aparecerán aquí.</p>
+          </div>
+          
+          <div id="plots-container" style="display: none;">
+            <div style="margin-bottom: 20px;">
+              <h3 id="plot-title" style="color: var(--fg); margin-bottom: 10px;">Resultado de Simulación</h3>
+              
+              <!-- Controles principales -->
+              <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <button id="clear-plots" style="background: var(--bg2); color: var(--fg); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                  🗑️ Limpiar
+                </button>
+                <button id="export-plot" style="background: var(--accent); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                  � Exportar PNG
+                </button>
+                <button id="reset-zoom" style="background: var(--bg2); color: var(--fg); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                  🔍 Reset Zoom
+                </button>
+                <button id="toggle-controls" style="background: var(--bg2); color: var(--fg); border: 1px solid var(--border); padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                  ⚙️ Controles
+                </button>
+              </div>
+              
+              <!-- Panel de controles avanzados -->
+              <div id="plot-controls" style="display: none; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                  
+                  <!-- Escalas -->
+                  <div>
+                    <label style="display: block; color: var(--fg); font-weight: bold; margin-bottom: 8px;">Escalas</label>
+                    <div style="margin-bottom: 8px;">
+                      <label style="color: var(--fg); font-size: 14px;">
+                        Eje X: 
+                        <select id="x-scale" style="margin-left: 8px; padding: 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;">
+                          <option value="linear">Lineal</option>
+                          <option value="logarithmic">Logarítmica</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div>
+                      <label style="color: var(--fg); font-size: 14px;">
+                        Eje Y: 
+                        <select id="y-scale" style="margin-left: 8px; padding: 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;">
+                          <option value="linear">Lineal</option>
+                          <option value="logarithmic">Logarítmica</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <!-- Tipo de gráfico -->
+                  <div>
+                    <label style="display: block; color: var(--fg); font-weight: bold; margin-bottom: 8px;">Tipo</label>
+                    <select id="chart-type" style="width: 100%; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;">
+                      <option value="line">Línea</option>
+                      <option value="scatter">Puntos</option>
+                      <option value="bar">Barras</option>
+                    </select>
+                  </div>
+                  
+                  <!-- Colores -->
+                  <div>
+                    <label style="display: block; color: var(--fg); font-weight: bold; margin-bottom: 8px;">Color</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                      <input type="color" id="line-color" value="#0e639c" style="width: 40px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                      <select id="color-preset" style="flex: 1; padding: 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;">
+                        <option value="#0e639c">Azul</option>
+                        <option value="#dc3545">Rojo</option>
+                        <option value="#28a745">Verde</option>
+                        <option value="#ffc107">Amarillo</option>
+                        <option value="#6f42c1">Púrpura</option>
+                        <option value="#fd7e14">Naranja</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <!-- Tamaño -->
+                  <div>
+                    <label style="display: block; color: var(--fg); font-weight: bold; margin-bottom: 8px;">Tamaño</label>
+                    <div style="margin-bottom: 8px;">
+                      <label style="color: var(--fg); font-size: 14px;">
+                        Alto: 
+                        <select id="chart-height" style="margin-left: 8px; padding: 4px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;">
+                          <option value="300">Pequeño (300px)</option>
+                          <option value="400" selected>Mediano (400px)</option>
+                          <option value="500">Grande (500px)</option>
+                          <option value="600">Extra grande (600px)</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div>
+                      <label style="color: var(--fg); font-size: 14px;">
+                        Grosor línea: 
+                        <input type="range" id="line-width" min="1" max="5" value="2" style="margin-left: 8px;">
+                        <span id="line-width-value">2</span>px
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <!-- Grid y animaciones -->
+                  <div>
+                    <label style="display: block; color: var(--fg); font-weight: bold; margin-bottom: 8px;">Opciones</label>
+                    <div style="margin-bottom: 8px;">
+                      <label style="color: var(--fg); font-size: 14px;">
+                        <input type="checkbox" id="show-grid" checked style="margin-right: 8px;">
+                        Mostrar grilla
+                      </label>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                      <label style="color: var(--fg); font-size: 14px;">
+                        <input type="checkbox" id="show-points" style="margin-right: 8px;">
+                        Mostrar puntos
+                      </label>
+                    </div>
+                    <div>
+                      <label style="color: var(--fg); font-size: 14px;">
+                        <input type="checkbox" id="enable-animations" checked style="margin-right: 8px;">
+                        Animaciones
+                      </label>
+                    </div>
+                  </div>
+                  
+                </div>
+                
+                <div style="margin-top: 15px; text-align: center;">
+                  <button id="apply-changes" style="background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    ✨ Aplicar Cambios
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div id="chart-wrapper" style="background: white; border-radius: 8px; padding: 20px; height: 400px;">
+              <canvas id="main-plot-canvas" style="width: 100%; height: 100%;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Tab switcher -->
+  <script>
+    const sidebarIcons = document.querySelectorAll('.sidebar-icon');
+    const panels = document.querySelectorAll('.panel');
+    let activeId = 'panel-chat';
+
+    function activate(id) {
+      if (activeId === id) return;
+      activeId = id;
+
+      sidebarIcons.forEach(icon => {
+        const on = icon.dataset.target === id;
+        icon.classList.toggle('active', on);
+      });
+      
+      panels.forEach(p => {
+        const on = p.id === id;
+        p.classList.toggle('active', on);
+      });
+
+      // Si el editor se vuelve visible, avisamos para crear/relayout
+      if (id === 'panel-editor') {
+        window.dispatchEvent(new CustomEvent('editor:visible'));
+        // También actualizar la visibilidad de las pestañas
+        setTimeout(() => {
+          if (window.updateFileTabsVisibility) {
+            window.updateFileTabsVisibility();
+          }
+        }, 50);
+      }
+    }
+
+    sidebarIcons.forEach(icon => icon.addEventListener('click', () => activate(icon.dataset.target)));
+  </script>
+
+  <!-- Tu lógica app / Monaco -->
+  <script type="module" src="/main.js"></script>
+</body>
+</html>
